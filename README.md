@@ -2,7 +2,7 @@
 
 File finder is a file manager made for the terminal in C and Ncurses.
 
-![](https://github.com/Noah11012/file_finder/file_finder.png)
+![](https://github.com/Noah11012/file_finder/blob/master/file_finder.png)
 
 ### Features
 
