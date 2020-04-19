@@ -347,6 +347,11 @@ void draw_listing(Context *context)
 
     context->message = MESSAGE_NONE;
 
+    context->width = getmaxx(stdscr);
+    context->height = getmaxy(stdscr);
+
+    wresize(context->left, context->height - 1, context->width);
+
     clear_windows_that_need_it(context);
 
     mvprintw(0, 1, "%s", context->current_directory_path);
