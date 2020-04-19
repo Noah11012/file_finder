@@ -204,6 +204,7 @@ void message_create_file(Context *context)
     memset(context->input_buffer.memory, 0, context->input_buffer.count);
     context->input_buffer.count = 0;
     context->state &= ~STATE_NEW_FILE;
+    delwin(context->new_file_box);
     curs_set(0);
     message_update_entries(context);
 }
@@ -283,6 +284,10 @@ void handle_input_for_listing(Context *context)
         break;
 
         case 'n':
+        context->new_file_box = newwin(3,
+               context->width / 2,
+               context->height / 4,
+               (context->width / 2) - (context->width / 4));
         context->state |= STATE_NEW_FILE;
         curs_set(1);
         break;
@@ -349,9 +354,14 @@ void draw_listing(Context *context)
         break;
     }
 
-    context->width = getmaxx(stdscr);
-    context->height = getmaxy(stdscr);
-    wresize(context->left, context->height - 1, context->width);
+    int new_width = getmaxx(stdscr);
+    int new_height = getmaxy(stdscr);
+    if (context->width != new_width || context->height != new_height)
+    {
+        context->width = new_width;
+        context->height = new_height;
+        wresize(context->left, context->height - 1, context->width);
+    }
 
     clear_windows_that_need_it(context);
 
@@ -466,10 +476,7 @@ int main(void)
     context.state = STATE_LISTING;
     context.message = MESSAGE_UPDATE_ENTRIES;
     context.entries = array_new();
-    context.new_file_box = newwin(3,
-                                  context.width / 2,
-                                  context.height / 4,
-                                  (context.width / 2) - (context.width / 4));
+    context.new_file_box = NULL;
     context.keep_running = true;
     while(context.keep_running)
     {
