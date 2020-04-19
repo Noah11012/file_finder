@@ -204,6 +204,7 @@ void message_create_file(Context *context)
     memset(context->input_buffer.memory, 0, context->input_buffer.count);
     context->input_buffer.count = 0;
     context->state &= ~STATE_NEW_FILE;
+    curs_set(0);
     message_update_entries(context);
 }
 
@@ -263,7 +264,7 @@ void draw_and_handle_input_for_new_file_box(Context *context)
         break;
 
         default:
-        if (buffer->count < getmaxx(context->new_file_box) - 2)
+        if (buffer->count < getmaxx(context->new_file_box) - 3)
         {
             buffer->memory[buffer->count] = c;
             buffer->count++;
@@ -283,6 +284,7 @@ void handle_input_for_listing(Context *context)
 
         case 'n':
         context->state |= STATE_NEW_FILE;
+        curs_set(1);
         break;
 
         case 'd':
