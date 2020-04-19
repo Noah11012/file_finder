@@ -116,6 +116,7 @@ typedef struct
     int width;
     int height;
     WINDOW *new_file_box;
+    char *error_message;
     Message message;
     char *message_change_directory_new_path;
     Array entries;
@@ -193,7 +194,7 @@ void message_create_file(Context *context)
     int exist = stat(context->input_buffer.memory, &s);
     if (exist == 0)
     {
-        context->keep_running = false;
+        context->error_message = "That file already exists!";
         return;
     }
 
@@ -202,12 +203,18 @@ void message_create_file(Context *context)
 
     memset(context->input_buffer.memory, 0, context->input_buffer.count);
     context->input_buffer.count = 0;
+    context->state &= ~STATE_NEW_FILE;
     message_update_entries(context);
 }
 
 void message_delete_file(Context *context)
 {
-    remove(context->entries.buffer[context->selection].name);
+    if (remove(context->entries.buffer[context->selection].name) == -1)
+    {
+        context->error_message = "Cannot delete that file!";
+        return;
+    }
+
     if (context->selection == context->entries.count - 1)
     {
         context->selection--;
@@ -248,7 +255,6 @@ void draw_and_handle_input_for_new_file_box(Context *context)
         break;
 
         case '\n':
-        context->state &= ~STATE_NEW_FILE;
         context->message = MESSAGE_CREATE_FILE;
         break;
 
@@ -277,10 +283,6 @@ void handle_input_for_listing(Context *context)
 
         case 'n':
         context->state |= STATE_NEW_FILE;
-        context->new_file_box = newwin(3,
-                                       context->width / 2,
-                                       context->height / 4,
-                                       (context->width / 2) - (context->width / 4));
         break;
 
         case 'd':
@@ -345,11 +347,8 @@ void draw_listing(Context *context)
         break;
     }
 
-    context->message = MESSAGE_NONE;
-
     context->width = getmaxx(stdscr);
     context->height = getmaxy(stdscr);
-
     wresize(context->left, context->height - 1, context->width);
 
     clear_windows_that_need_it(context);
@@ -395,7 +394,35 @@ void draw_listing(Context *context)
 
     box(context->left, 0, 0);
 
+    if (context->error_message)
+    {
+        if (context->message == MESSAGE_CREATE_FILE)
+        {
+            mvwprintw(context->left,
+                      getbegy(context->new_file_box) - 2,
+                      (getmaxx(context->left) / 2) - (strlen(context->error_message) / 2),
+                      "%s",
+                      context->error_message);
+
+            memset(context->input_buffer.memory, 0, context->input_buffer.count);
+            context->input_buffer.count = 0;
+        }
+
+        if (context->message == MESSAGE_DELETE_FILE)
+        {
+            mvwprintw(context->left,
+                      (context->height / 2 - 4),
+                      (context->width / 2) - (strlen(context->error_message) / 2),
+                      "%s", context->message);
+
+        }
+
+        context->error_message = NULL;
+    }
+
     refresh_windows_that_need_it(context);
+
+    context->message = MESSAGE_NONE;
 
     if (context->keep_running)
     {
@@ -437,7 +464,10 @@ int main(void)
     context.state = STATE_LISTING;
     context.message = MESSAGE_UPDATE_ENTRIES;
     context.entries = array_new();
-
+    context.new_file_box = newwin(3,
+                                  context.width / 2,
+                                  context.height / 4,
+                                  (context.width / 2) - (context.width / 4));
     context.keep_running = true;
     while(context.keep_running)
     {
