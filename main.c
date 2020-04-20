@@ -230,10 +230,10 @@ void message_delete_file(Context *context)
         return;
     }
 
+    context->change_selection = false;
     if (context->selection == context->entries.count - 1)
     {
         context->selection--;
-        context->change_selection = false;
     }
 
     message_update_entries(context);
