@@ -110,6 +110,13 @@ typedef enum
     MESSAGE_DELETE_FILE,
 } Message;
 
+typedef enum
+{
+    ERROR_MESSAGE_DISPLAY_NONE,
+    ERROR_MESSAGE_DISPLAY_NEW_FILE,
+    ERROR_MESSAGE_DISPLAY_DELETE_FILE
+} Error_Message_Display;
+
 typedef struct
 {
     WINDOW *left;
@@ -117,7 +124,9 @@ typedef struct
     int height;
     WINDOW *new_file_box;
     char *error_message;
+    Error_Message_Display error_message_display;
     Message message;
+    int change_selection;
     char *message_change_directory_new_path;
     Array entries;
     State state;
@@ -151,11 +160,6 @@ void clear_windows_that_need_it(Context *context)
 
 void message_update_entries(Context *context)
 {
-    if (context->message != MESSAGE_DELETE_FILE)
-    {
-        context->selection = 0;
-    }
-
     context->entries.count = 0;
     for (struct dirent *ent = readdir(context->current_directory); ent;
          ent = readdir(context->current_directory))
@@ -186,6 +190,13 @@ void message_update_entries(Context *context)
         }
     }
     rewinddir(context->current_directory);
+
+    if (context->change_selection)
+    {
+        context->selection = 0;
+    }
+
+    context->change_selection = true;
 }
 
 void message_create_file(Context *context)
@@ -195,6 +206,7 @@ void message_create_file(Context *context)
     if (exist == 0)
     {
         context->error_message = "That file already exists!";
+        context->error_message_display = ERROR_MESSAGE_DISPLAY_NEW_FILE;
         return;
     }
 
@@ -214,12 +226,14 @@ void message_delete_file(Context *context)
     if (remove(context->entries.buffer[context->selection].name) == -1)
     {
         context->error_message = "Cannot delete that file!";
+        context->error_message_display = ERROR_MESSAGE_DISPLAY_DELETE_FILE;
         return;
     }
 
     if (context->selection == context->entries.count - 1)
     {
         context->selection--;
+        context->change_selection = false;
     }
 
     message_update_entries(context);
@@ -260,8 +274,11 @@ void draw_and_handle_input_for_new_file_box(Context *context)
         context->message = MESSAGE_CREATE_FILE;
         break;
 
-        case 'q':
-        context->keep_running = false;
+        case 27:
+        context->state &= ~STATE_NEW_FILE;
+        memset(context->input_buffer.memory, 0, context->input_buffer.count);
+        context->input_buffer.count = 0;
+        curs_set(0);
         break;
 
         default:
@@ -354,6 +371,8 @@ void draw_listing(Context *context)
         break;
     }
 
+    context->message = MESSAGE_NONE;
+
     int new_width = getmaxx(stdscr);
     int new_height = getmaxy(stdscr);
     if (context->width != new_width || context->height != new_height)
@@ -406,9 +425,9 @@ void draw_listing(Context *context)
 
     box(context->left, 0, 0);
 
-    if (context->error_message)
+    if (context->error_message_display)
     {
-        if (context->message == MESSAGE_CREATE_FILE)
+        if (context->error_message_display == ERROR_MESSAGE_DISPLAY_NEW_FILE)
         {
             mvwprintw(context->left,
                       getbegy(context->new_file_box) - 2,
@@ -420,21 +439,16 @@ void draw_listing(Context *context)
             context->input_buffer.count = 0;
         }
 
-        if (context->message == MESSAGE_DELETE_FILE)
+        if (context->error_message_display == ERROR_MESSAGE_DISPLAY_DELETE_FILE)
         {
             mvwprintw(context->left,
                       (context->height / 2 - 4),
                       (context->width / 2) - (strlen(context->error_message) / 2),
                       "%s", context->message);
-
         }
-
-        context->error_message = NULL;
     }
 
     refresh_windows_that_need_it(context);
-
-    context->message = MESSAGE_NONE;
 
     if (context->keep_running)
     {
@@ -463,8 +477,6 @@ int main(void)
     context.width = getmaxx(stdscr);
     context.height = getmaxy(stdscr);
     context.left = newwin(context.height - 1, context.width, 1, 0);
-    // Later on we will allow two windows at a time to be rendered
-    // WINDOW *right;
     
     getcwd(context.current_directory_path, PATH_MAX);
     context.current_directory = opendir(context.current_directory_path);
@@ -475,6 +487,8 @@ int main(void)
     context.new_file_box = NULL;
     context.state = STATE_LISTING;
     context.message = MESSAGE_UPDATE_ENTRIES;
+    context.error_message_display = ERROR_MESSAGE_DISPLAY_NONE;
+    context.change_selection = true;
     context.entries = array_new();
     context.new_file_box = NULL;
     context.keep_running = true;
