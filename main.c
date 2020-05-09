@@ -48,9 +48,9 @@ Array array_new(void)
         .position = 0,
         .heap_buffer = NULL,
     };
-    
+
     array.buffer = array.stack_buffer;
-    
+
     return array;
 }
 
@@ -68,10 +68,10 @@ void array_add(Array *array, Dir_Entry item)
             array->heap_buffer = realloc(array->heap_buffer, sizeof item * array->capacity * 2);
             array->buffer = array->heap_buffer;
         }
-        
+
         array->capacity *= 2;
     }
-    
+
     array->buffer[array->count] = item;
     array->count++;
 }
@@ -103,15 +103,6 @@ typedef enum
 
 typedef enum
 {
-    MESSAGE_NONE,
-    MESSAGE_UPDATE_ENTRIES,
-    MESSAGE_CHANGE_DIRECTORY,
-    MESSAGE_CREATE_FILE,
-    MESSAGE_DELETE_FILE,
-} Message;
-
-typedef enum
-{
     ERROR_MESSAGE_DISPLAY_NONE,
     ERROR_MESSAGE_DISPLAY_NEW_FILE,
     ERROR_MESSAGE_DISPLAY_DELETE_FILE
@@ -125,7 +116,6 @@ typedef struct
     WINDOW *new_file_box;
     char *error_message;
     Error_Message_Display error_message_display;
-    Message message;
     int change_selection;
     char *message_change_directory_new_path;
     Array entries;
@@ -158,7 +148,7 @@ void clear_windows_that_need_it(Context *context)
     }
 }
 
-void message_update_entries(Context *context)
+void update_entries(Context *context)
 {
     context->entries.count = 0;
     for (struct dirent *ent = readdir(context->current_directory); ent;
@@ -178,7 +168,7 @@ void message_update_entries(Context *context)
                 case DT_REG:
                 entry.kind = DIR_ENTRY_FILE;
                 break;
-                
+
                 case DT_DIR:
                 entry.kind = DIR_ENTRY_DIRECTORY;
                 break;
@@ -199,7 +189,7 @@ void message_update_entries(Context *context)
     context->change_selection = true;
 }
 
-void message_create_file(Context *context)
+void create_file(Context *context)
 {
     struct stat s;
     int exist = stat(context->input_buffer.memory, &s);
@@ -218,10 +208,9 @@ void message_create_file(Context *context)
     context->state &= ~STATE_NEW_FILE;
     delwin(context->new_file_box);
     curs_set(0);
-    message_update_entries(context);
 }
 
-void message_delete_file(Context *context)
+void delete_file(Context *context)
 {
     if (remove(context->entries.buffer[context->selection].name) == -1)
     {
@@ -235,17 +224,14 @@ void message_delete_file(Context *context)
     {
         context->selection--;
     }
-
-    message_update_entries(context);
 }
 
-void message_change_directory(Context *context)
+void change_directory(Context *context, char *new_path)
 {
-    chdir(context->message_change_directory_new_path);
+    chdir(new_path);
     getcwd(context->current_directory_path, PATH_MAX);
     closedir(context->current_directory);
     context->current_directory = opendir(context->current_directory_path);
-    message_update_entries(context);
 }
 
 void draw_and_handle_input_for_new_file_box(Context *context)
@@ -271,7 +257,7 @@ void draw_and_handle_input_for_new_file_box(Context *context)
         break;
 
         case '\n':
-        context->message = MESSAGE_CREATE_FILE;
+        create_file(context);
         break;
 
         case 27:
@@ -307,27 +293,29 @@ void handle_input_for_listing(Context *context)
                (context->width / 2) - (context->width / 4));
         context->state |= STATE_NEW_FILE;
         curs_set(1);
+        update_entries(context);
         break;
 
         case 'd':
-        context->message = MESSAGE_DELETE_FILE;
+        delete_file(context);
+        update_entries(context);
         break;
 
         case 's':
         context->show_hidden_files = !context->show_hidden_files;
-        context->message = MESSAGE_UPDATE_ENTRIES;
+        update_entries(context);
         break;
 
         case 'b':
-        context->message = MESSAGE_CHANGE_DIRECTORY;
-        context->message_change_directory_new_path = "..";
+        change_directory(context, "..");
+        update_entries(context);
         break;
 
         case 'e':
         if (context->entries.buffer[context->selection].kind == DIR_ENTRY_DIRECTORY)
         {
-            context->message = MESSAGE_CHANGE_DIRECTORY;
-            context->message_change_directory_new_path = context->entries.buffer[context->selection].name;
+            change_directory(context, context->entries.buffer[context->selection].name);
+            update_entries(context);
         }
         break;
 
@@ -349,30 +337,6 @@ void handle_input_for_listing(Context *context)
 
 void draw_listing(Context *context)
 {
-    switch (context->message)
-    {
-        case MESSAGE_UPDATE_ENTRIES:
-        message_update_entries(context);
-        break;
-
-        case MESSAGE_CREATE_FILE:
-        message_create_file(context);
-        break;
-
-        case MESSAGE_DELETE_FILE:
-        message_delete_file(context);
-        break;
-
-        case MESSAGE_CHANGE_DIRECTORY:
-        message_change_directory(context);
-        break;
-
-        default:
-        break;
-    }
-
-    context->message = MESSAGE_NONE;
-
     int new_width = getmaxx(stdscr);
     int new_height = getmaxy(stdscr);
     if (context->width != new_width || context->height != new_height)
@@ -444,7 +408,7 @@ void draw_listing(Context *context)
             mvwprintw(context->left,
                       (context->height / 2 - 4),
                       (context->width / 2) - (strlen(context->error_message) / 2),
-                      "%s", context->message);
+                      "%s", context->error_message);
         }
     }
 
@@ -472,32 +436,32 @@ int main(void)
     raw();
     noecho();
     curs_set(0);
-    
+
     Context context;
     context.width = getmaxx(stdscr);
     context.height = getmaxy(stdscr);
     context.left = newwin(context.height - 1, context.width, 1, 0);
-    
+
     getcwd(context.current_directory_path, PATH_MAX);
     context.current_directory = opendir(context.current_directory_path);
-    
+
     context.selection = 0;
     context.show_hidden_files = false;
     context.input_buffer = const_buffer_new();
     context.new_file_box = NULL;
     context.state = STATE_LISTING;
-    context.message = MESSAGE_UPDATE_ENTRIES;
     context.error_message_display = ERROR_MESSAGE_DISPLAY_NONE;
     context.change_selection = true;
     context.entries = array_new();
     context.new_file_box = NULL;
     context.keep_running = true;
+    update_entries(&context);
     while(context.keep_running)
     {
         draw_listing(&context);
     }
-    
+
     closedir(context.current_directory);
-    
+
     endwin();
 }
